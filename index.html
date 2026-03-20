@@ -251,6 +251,7 @@
     controls.minDistance = 5;
     controls.maxDistance = 80;
     controls.maxPolarAngle = Math.PI / 2;
+    controls.autoRotate = false;
 
     const hemi = new THREE.HemisphereLight(0xf6fbff, 0xc4ced8, 1.2);
     scene.add(hemi);
@@ -312,6 +313,14 @@
 
     let currentState = 'bestand';
     let rootModel = null;
+    let introActive = true;
+    let introStart = 0;
+    let introClipMin = -3;
+    let introClipMax = 15;
+
+    function sleep(ms) {
+      return new Promise(resolve => setTimeout(resolve, ms));
+    }
 
     function findByNames(model, names) {
       const found = [];
@@ -441,7 +450,7 @@
         setVisible('umbauOnly', false);
         stateBestandBtn.classList.add('active');
         stateUmbauBtn.classList.remove('active');
-        statusEl.textContent = 'Modellzustand: Bestand';
+        if (!introActive) statusEl.textContent = 'Modellzustand: Bestand';
       } else {
         setVisible('alwaysOn', true);
         setVisible('bestandOnly', false);
@@ -449,8 +458,9 @@
 
         const farbe = groupMap.get('bestandOnly') || [];
         farbe.forEach((obj) => {
-          if ((obj.name || '').toUpperCase().includes('AUSENWAENDE_FARBE')) obj.visible = false;
-          if ((obj.name || '').toUpperCase().includes('DACH')) obj.visible = false;
+          const n = (obj.name || '').toUpperCase();
+          if (n.includes('AUSENWAENDE_FARBE')) obj.visible = false;
+          if (n === 'DACH' || n.includes(':DACH')) obj.visible = false;
         });
 
         const always = groupMap.get('alwaysOn') || [];
@@ -460,7 +470,7 @@
 
         stateBestandBtn.classList.remove('active');
         stateUmbauBtn.classList.add('active');
-        statusEl.textContent = 'Modellzustand: Umbau';
+        if (!introActive) statusEl.textContent = 'Modellzustand: Umbau';
       }
     }
 
@@ -474,7 +484,7 @@
     }
 
     function onDoubleClick(event) {
-      if (!rootModel) return;
+      if (!rootModel || introActive) return;
 
       const rect = renderer.domElement.getBoundingClientRect();
       pointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
@@ -489,16 +499,55 @@
       statusEl.textContent = `${target.name || 'Bauteil'} ${target.visible ? 'eingeblendet' : 'ausgeblendet'}.`;
     }
 
-    stateBestandBtn.addEventListener('click', () => applyState('bestand'));
-    stateUmbauBtn.addEventListener('click', () => applyState('umbau'));
+    async function playIntro() {
+      if (!rootModel) return;
+      introActive = true;
+      introStart = performance.now();
+      controls.autoRotate = true;
+      controls.autoRotateSpeed = 1.6;
+      applyState('bestand');
+      clippingPlane.constant = introClipMax;
+      clipSlider.value = introClipMax;
+      statusEl.textContent = 'Präsentation startet ...';
+
+      await sleep(2600);
+      statusEl.textContent = 'Bestand – Schnitt fährt durch das Modell.';
+
+      await sleep(2600);
+      applyState('umbau');
+      statusEl.textContent = 'Umbau';
+
+      await sleep(2000);
+      applyState('bestand');
+      clippingPlane.constant = introClipMax;
+      clipSlider.value = introClipMax;
+      controls.autoRotate = false;
+      introActive = false;
+      statusEl.textContent = 'Modell geladen. Doppelklick blendet Bauteile ein/aus.';
+    }
+
+    stateBestandBtn.addEventListener('click', () => {
+      introActive = false;
+      controls.autoRotate = false;
+      applyState('bestand');
+    });
+    stateUmbauBtn.addEventListener('click', () => {
+      introActive = false;
+      controls.autoRotate = false;
+      applyState('umbau');
+    });
     renderer.domElement.addEventListener('dblclick', onDoubleClick);
 
     clipSlider.addEventListener('input', (e) => {
+      introActive = false;
+      controls.autoRotate = false;
       clippingPlane.constant = Number(e.target.value);
       statusEl.textContent = `Schnitthöhe: ${Number(e.target.value).toFixed(1)}`;
     });
 
     resetViewBtn.addEventListener('click', () => {
+      introActive = false;
+      controls.autoRotate = false;
       camera.position.set(18, 12, 18);
       controls.target.set(0, 4, 0);
       controls.update();
@@ -509,6 +558,8 @@
 
     showAllBtn.addEventListener('click', () => {
       if (!rootModel) return;
+      introActive = false;
+      controls.autoRotate = false;
       rootModel.traverse((child) => {
         if (child.isMesh) child.visible = true;
         else if (child !== rootModel) child.visible = true;
@@ -541,7 +592,7 @@
         applyClipping(rootModel);
         collectGroups(rootModel);
         applyState('bestand');
-        statusEl.textContent = 'Modell geladen. Doppelklick blendet Bauteile ein/aus.';
+        playIntro();
       },
       undefined,
       (error) => {
@@ -552,6 +603,17 @@
 
     function animate() {
       requestAnimationFrame(animate);
+
+      if (introActive) {
+        const elapsed = performance.now() - introStart;
+        if (elapsed >= 2600 && elapsed < 5200) {
+          const t = (elapsed - 2600) / 2600;
+          const pingPong = t < 0.5 ? t * 2 : (1 - t) * 2;
+          clippingPlane.constant = THREE.MathUtils.lerp(introClipMax, introClipMin, pingPong);
+          clipSlider.value = clippingPlane.constant;
+        }
+      }
+
       controls.update();
       renderer.render(scene, camera);
     }
