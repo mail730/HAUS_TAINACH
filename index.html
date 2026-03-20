@@ -242,6 +242,9 @@
     const pmremGenerator = new THREE.PMREMGenerator(renderer);
     scene.environment = pmremGenerator.fromScene(new RoomEnvironment(), 0.035).texture;
 
+    const raycaster = new THREE.Raycaster();
+    const pointer = new THREE.Vector2();
+
     const controls = new OrbitControls(camera, renderer.domElement);
     controls.enableDamping = true;
     controls.target.set(0, 4, 0);
@@ -283,6 +286,7 @@
 
     const clippingPlane = new THREE.Plane(new THREE.Vector3(0, -1, 0), 15);
     const groupMap = new Map();
+    const toggleTargets = [];
 
     const groups = {
       bestandOnly: ['DACH', 'GASTGARTEN', 'GASTGARTENDACH', 'GASTGARTENGLAS', 'AUSENWAENDE_FARBE'],
@@ -301,12 +305,13 @@
         'TREPPENOG',
         'STÜTZMAUER',
         'PRIVAT',
-        'Studio BASS',
+        'STUDIO BASS',
         'VERMIETUNG'
       ]
     };
 
     let currentState = 'bestand';
+    let rootModel = null;
 
     function findByNames(model, names) {
       const found = [];
@@ -326,6 +331,7 @@
 
         child.castShadow = true;
         child.receiveShadow = true;
+        toggleTargets.push(child);
 
         const materials = Array.isArray(child.material) ? child.material : [child.material];
         const name = (child.name || '').toUpperCase();
@@ -351,8 +357,12 @@
             mat.color = new THREE.Color(0xd89247);
             mat.roughness = 0.98;
             mat.metalness = 0.0;
-          } else if (name.includes('AUSENWAENDE') || name.includes('INNENWAENDE')) {
+          } else if (name.includes('AUSENWAENDE')) {
             mat.color = new THREE.Color(0xc9ccd1);
+            mat.roughness = 0.98;
+            mat.metalness = 0.0;
+          } else if (name.includes('INNENWAENDE')) {
+            mat.color = new THREE.Color(0xd7d9dd);
             mat.roughness = 0.98;
             mat.metalness = 0.0;
           } else if (name.includes('DACHUMBAU')) {
@@ -424,25 +434,64 @@
 
     function applyState(state) {
       currentState = state;
-      setVisible('alwaysOn', true);
 
       if (state === 'bestand') {
+        setVisible('alwaysOn', true);
         setVisible('bestandOnly', true);
         setVisible('umbauOnly', false);
         stateBestandBtn.classList.add('active');
         stateUmbauBtn.classList.remove('active');
         statusEl.textContent = 'Modellzustand: Bestand';
       } else {
+        setVisible('alwaysOn', true);
         setVisible('bestandOnly', false);
         setVisible('umbauOnly', true);
+
+        const farbe = groupMap.get('bestandOnly') || [];
+        farbe.forEach((obj) => {
+          if ((obj.name || '').toUpperCase().includes('AUSENWAENDE_FARBE')) obj.visible = false;
+          if ((obj.name || '').toUpperCase().includes('DACH')) obj.visible = false;
+        });
+
+        const always = groupMap.get('alwaysOn') || [];
+        always.forEach((obj) => {
+          if ((obj.name || '').toUpperCase().includes('AUSENWAENDE')) obj.visible = true;
+        });
+
         stateBestandBtn.classList.remove('active');
         stateUmbauBtn.classList.add('active');
         statusEl.textContent = 'Modellzustand: Umbau';
       }
     }
 
+    function findToggleObject(object) {
+      let current = object;
+      while (current && current !== rootModel) {
+        if (current.name && current.name.trim()) return current;
+        current = current.parent;
+      }
+      return object;
+    }
+
+    function onDoubleClick(event) {
+      if (!rootModel) return;
+
+      const rect = renderer.domElement.getBoundingClientRect();
+      pointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+      pointer.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+
+      raycaster.setFromCamera(pointer, camera);
+      const hits = raycaster.intersectObjects(toggleTargets, false);
+      if (!hits.length) return;
+
+      const target = findToggleObject(hits[0].object);
+      target.visible = !target.visible;
+      statusEl.textContent = `${target.name || 'Bauteil'} ${target.visible ? 'eingeblendet' : 'ausgeblendet'}.`;
+    }
+
     stateBestandBtn.addEventListener('click', () => applyState('bestand'));
     stateUmbauBtn.addEventListener('click', () => applyState('umbau'));
+    renderer.domElement.addEventListener('dblclick', onDoubleClick);
 
     clipSlider.addEventListener('input', (e) => {
       clippingPlane.constant = Number(e.target.value);
@@ -459,6 +508,11 @@
     });
 
     showAllBtn.addEventListener('click', () => {
+      if (!rootModel) return;
+      rootModel.traverse((child) => {
+        if (child.isMesh) child.visible = true;
+        else if (child !== rootModel) child.visible = true;
+      });
       applyState(currentState);
       statusEl.textContent = 'Aktueller Zustand vollständig eingeblendet.';
     });
@@ -467,7 +521,7 @@
     loader.load(
       './Haus_Tainach_BANK.glb',
       (gltf) => {
-        const rootModel = gltf.scene;
+        rootModel = gltf.scene;
         scene.add(rootModel);
 
         rootModel.rotation.x = -Math.PI / 2;
@@ -487,7 +541,7 @@
         applyClipping(rootModel);
         collectGroups(rootModel);
         applyState('bestand');
-        statusEl.textContent = 'Modell geladen.';
+        statusEl.textContent = 'Modell geladen. Doppelklick blendet Bauteile ein/aus.';
       },
       undefined,
       (error) => {
