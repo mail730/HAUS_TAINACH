@@ -43,14 +43,14 @@
     .dot.vermietet { background: #597ea3; }
     .status { margin-top: 12px; font-size: 12px; color: #64748b; line-height: 1.4; min-height: 18px; }
     #demoCursor {
-      position: absolute; z-index: 20; width: 22px; height: 22px; pointer-events: none; opacity: 0; transform: translate(-50%, -50%) scale(1);
-      transition: transform 0.18s ease, opacity 0.25s ease;
+      position: absolute; z-index: 20; width: 44px; height: 44px; pointer-events: none; opacity: 0; transform: translate(-50%, -50%) scaleX(-1) scale(1);
+      transition: transform 0.18s ease, opacity 0.25s ease, left 0.35s ease, top 0.35s ease;
     }
     #demoCursor::before {
       content: ''; position: absolute; left: 0; top: 0; width: 0; height: 0;
-      border-left: 0 solid transparent; border-right: 10px solid transparent; border-top: 18px solid #0f172a;
+      border-left: 0 solid transparent; border-right: 20px solid transparent; border-top: 36px solid #ff5a36;
       transform: rotate(-35deg); transform-origin: 0 0;
-      filter: drop-shadow(0 2px 6px rgba(15,23,42,0.25));
+      filter: drop-shadow(0 3px 8px rgba(255,90,54,0.45));
     }
     @media (max-width: 700px) {
       .panel { width: calc(100vw - 24px); left: 12px; top: 12px; padding: 14px; border-radius: 18px; }
@@ -181,7 +181,7 @@
     const toggleTargets = [];
 
     const groups = {
-      bestandOnly: ['DACH', 'GASTGARTEN', 'GASTGARTENDACH', 'GASTGARTENGLAS', 'AUSENWAENDE_FARBE'],
+      bestandOnly: ['AUSENWAENDE_FARBE', 'DACH', 'GASTGARTEN', 'GASTGARTENDACH', 'GASTGARTENGLAS'],
       umbauOnly: ['DACHUMBAU', 'ZUBAU', 'ZUBAUGLAS'],
       alwaysOn: ['AUSENWAENDE', 'DEKEUG', 'DECKEOG', 'BALKONE', 'FENSTERRAHMEN', 'FENSTERGLAS', 'INNENWAENDEUG', 'INNENWAENDEOG', 'GRUNDSTÜCK', 'TREPPEN', 'TREPPENOG', 'STÜTZMAUER', 'PRIVAT', 'STUDIO BASS', 'VERMIETUNG']
     };
@@ -254,11 +254,6 @@
       groupMap.set('alwaysOn', findByNames(model, groups.alwaysOn));
     }
 
-    function setVisible(listName, visible) {
-      const items = groupMap.get(listName) || [];
-      items.forEach((obj) => { obj.visible = visible; });
-    }
-
     function applyState(state) {
       currentState = state;
       const bestand = groupMap.get('bestandOnly') || [];
@@ -268,7 +263,7 @@
       if (state === 'bestand') {
         always.forEach((obj) => {
           const n = (obj.name || '').toUpperCase();
-          if (n.includes('AUSENWAENDE')) obj.visible = false;
+          if (n.includes('AUSENWAENDE') && !n.includes('AUSENWAENDE_FARBE')) obj.visible = false;
           else obj.visible = true;
         });
         bestand.forEach((obj) => obj.visible = true);
@@ -278,15 +273,11 @@
         if (!introActive) statusEl.textContent = 'Modellzustand: Bestand';
       } else {
         always.forEach((obj) => obj.visible = true);
-        bestand.forEach((obj) => {
-          const n = (obj.name || '').toUpperCase();
-          if (n.includes('AUSENWAENDE_FARBE') || n === 'DACH' || n.includes(':DACH')) obj.visible = false;
-          else obj.visible = false;
-        });
+        bestand.forEach((obj) => obj.visible = false);
         umbau.forEach((obj) => obj.visible = true);
         always.forEach((obj) => {
           const n = (obj.name || '').toUpperCase();
-          if (n.includes('AUSENWAENDE')) obj.visible = true;
+          if (n.includes('AUSENWAENDE') && !n.includes('AUSENWAENDE_FARBE')) obj.visible = true;
         });
         stateBestandBtn.classList.remove('active');
         stateUmbauBtn.classList.add('active');
@@ -338,13 +329,13 @@
     }
 
     async function pulseCursor() {
-      demoCursor.style.transform = 'translate(-50%, -50%) scale(1.35)';
+      demoCursor.style.transform = 'translate(-50%, -50%) scaleX(-1) scale(1.35)';
       await sleep(180);
-      demoCursor.style.transform = 'translate(-50%, -50%) scale(1)';
+      demoCursor.style.transform = 'translate(-50%, -50%) scaleX(-1) scale(1)';
       await sleep(140);
-      demoCursor.style.transform = 'translate(-50%, -50%) scale(1.35)';
+      demoCursor.style.transform = 'translate(-50%, -50%) scaleX(-1) scale(1.35)';
       await sleep(180);
-      demoCursor.style.transform = 'translate(-50%, -50%) scale(1)';
+      demoCursor.style.transform = 'translate(-50%, -50%) scaleX(-1) scale(1)';
       await sleep(140);
     }
 
@@ -383,7 +374,6 @@
       clippingPlane.constant = introClipMax;
       clipSlider.value = introClipMax;
       statusEl.textContent = 'Präsentation startet ...';
-
       await sleep(3300);
       introPhase = 'clip';
       statusEl.textContent = 'Bestand – Schnitt fährt durch das Modell.';
