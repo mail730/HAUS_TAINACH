@@ -10,8 +10,8 @@
       width: 100%;
       height: 100%;
       overflow: hidden;
-      font-family: Arial, sans-serif;
-      background: #e9ecef;
+      font-family: Inter, Arial, sans-serif;
+      background: linear-gradient(180deg, #eef2f7 0%, #dfe6ee 100%);
     }
 
     #app {
@@ -26,48 +26,430 @@
 
     .panel {
       position: absolute;
-      top: 16px;
-      left: 16px;
+      top: 18px;
+      left: 18px;
       z-index: 10;
-      width: 280px;
-      max-width: calc(100vw - 32px);
-      background: rgba(255,255,255,0.92);
-      backdrop-filter: blur(8px);
-      border-radius: 14px;
-      box-shadow: 0 8px 24px rgba(0,0,0,0.15);
-      padding: 14px;
+      width: 300px;
+      max-width: calc(100vw - 36px);
+      background: rgba(255, 255, 255, 0.82);
+      backdrop-filter: blur(14px);
+      -webkit-backdrop-filter: blur(14px);
+      border: 1px solid rgba(255,255,255,0.65);
+      border-radius: 20px;
+      box-shadow: 0 14px 40px rgba(15, 23, 42, 0.18);
+      padding: 18px;
     }
 
     .panel h1 {
-      margin: 0 0 10px;
-      font-size: 16px;
+      margin: 0;
+      font-size: 18px;
+      font-weight: 700;
+      color: #0f172a;
+    }
+
+    .panel-subtitle {
+      margin-top: 4px;
+      font-size: 12px;
+      color: #64748b;
     }
 
     .group {
-      margin-top: 12px;
+      margin-top: 16px;
+      padding-top: 14px;
+      border-top: 1px solid rgba(148, 163, 184, 0.2);
     }
 
     .group-title {
-      font-size: 12px;
-      font-weight: bold;
-      color: #444;
-      margin-bottom: 8px;
+      font-size: 11px;
+      font-weight: 700;
+      color: #475569;
+      margin-bottom: 10px;
       text-transform: uppercase;
-      letter-spacing: 0.04em;
+      letter-spacing: 0.08em;
     }
 
     .buttons {
       display: grid;
       grid-template-columns: 1fr 1fr;
-      gap: 8px;
+      gap: 10px;
     }
 
     button {
       border: 0;
-      border-radius: 10px;
-      padding: 10px 12px;
+      border-radius: 14px;
+      padding: 12px 14px;
       cursor: pointer;
-      background: #1f2937;
+      background: linear-gradient(180deg, #1e293b 0%, #0f172a 100%);
+      color: white;
+      font-size: 14px;
+      font-weight: 600;
+      box-shadow: 0 8px 18px rgba(15, 23, 42, 0.16);
+      transition: transform 0.15s ease, box-shadow 0.15s ease, opacity 0.15s ease;
+    }
+
+    button:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 10px 22px rgba(15, 23, 42, 0.2);
+    }
+
+    button.secondary {
+      background: linear-gradient(180deg, #94a3b8 0%, #64748b 100%);
+    }
+
+    button.active {
+      background: linear-gradient(180deg, #0f766e 0%, #115e59 100%);
+    }
+
+    label {
+      display: block;
+      font-size: 13px;
+      margin-bottom: 8px;
+      color: #334155;
+      font-weight: 500;
+    }
+
+    input[type="range"] {
+      width: 100%;
+      accent-color: #2563eb;
+    }
+
+    .status {
+      margin-top: 12px;
+      font-size: 12px;
+      color: #64748b;
+      line-height: 1.4;
+      min-height: 18px;
+    }
+
+    @media (max-width: 700px) {
+      .panel {
+        width: calc(100vw - 24px);
+        left: 12px;
+        top: 12px;
+        padding: 14px;
+        border-radius: 18px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div id="app">
+    <div class="panel">
+      <h1>Haus Tainach Viewer</h1>
+      <div class="panel-subtitle">Bestand / Umbau mit Höhenschnitt</div>
+
+      <div class="group">
+        <div class="group-title">Modellzustand</div>
+        <div class="buttons">
+          <button id="stateBestand" class="active">Bestand</button>
+          <button id="stateUmbau">Umbau</button>
+        </div>
+      </div>
+
+      <div class="group">
+        <div class="group-title">Schnitt</div>
+        <label for="clipSlider">Höhe</label>
+        <input id="clipSlider" type="range" min="-5" max="15" step="0.1" value="15" />
+      </div>
+
+      <div class="group">
+        <div class="group-title">Ansicht</div>
+        <div class="buttons">
+          <button id="resetView">Reset</button>
+          <button id="showAll" class="secondary">Alles an</button>
+        </div>
+      </div>
+
+      <div class="status" id="status">Lade Modell ...</div>
+    </div>
+  </div>
+
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+      "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+    }
+  }
+  </script>
+
+  <script type="module">
+    import * as THREE from 'three';
+    import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+    import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+    import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+
+    const app = document.getElementById('app');
+    const statusEl = document.getElementById('status');
+    const clipSlider = document.getElementById('clipSlider');
+    const resetViewBtn = document.getElementById('resetView');
+    const showAllBtn = document.getElementById('showAll');
+    const stateBestandBtn = document.getElementById('stateBestand');
+    const stateUmbauBtn = document.getElementById('stateUmbau');
+
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0xe6ebf1);
+
+    const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 2000);
+    camera.position.set(18, 12, 18);
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.localClippingEnabled = true;
+    renderer.outputColorSpace = THREE.SRGBColorSpace;
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.08;
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    app.appendChild(renderer.domElement);
+
+    const pmremGenerator = new THREE.PMREMGenerator(renderer);
+    scene.environment = pmremGenerator.fromScene(new RoomEnvironment(), 0.04).texture;
+
+    const controls = new OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+    controls.target.set(0, 4, 0);
+    controls.minDistance = 5;
+    controls.maxDistance = 80;
+    controls.maxPolarAngle = Math.PI / 2;
+
+    const hemi = new THREE.HemisphereLight(0xffffff, 0xbfc7d1, 1.0);
+    scene.add(hemi);
+
+    const ambient = new THREE.AmbientLight(0xffffff, 0.65);
+    scene.add(ambient);
+
+    const dir1 = new THREE.DirectionalLight(0xffffff, 2.2);
+    dir1.position.set(18, 28, 14);
+    dir1.castShadow = true;
+    dir1.shadow.mapSize.set(2048, 2048);
+    dir1.shadow.camera.near = 1;
+    dir1.shadow.camera.far = 120;
+    dir1.shadow.camera.left = -40;
+    dir1.shadow.camera.right = 40;
+    dir1.shadow.camera.top = 40;
+    dir1.shadow.camera.bottom = -40;
+    dir1.shadow.bias = -0.0005;
+    scene.add(dir1);
+
+    const dir2 = new THREE.DirectionalLight(0xffffff, 0.8);
+    dir2.position.set(-12, 10, -10);
+    scene.add(dir2);
+
+    const ground = new THREE.Mesh(
+      new THREE.PlaneGeometry(400, 400),
+      new THREE.ShadowMaterial({ color: 0x000000, opacity: 0.16 })
+    );
+    ground.rotation.x = -Math.PI / 2;
+    ground.position.y = 0;
+    ground.receiveShadow = true;
+    scene.add(ground);
+
+    const clippingPlane = new THREE.Plane(new THREE.Vector3(0, -1, 0), 15);
+    const groupMap = new Map();
+
+    const groups = {
+      bestandOnly: ['DACH', 'GASTGARTEN', 'GASTGARTENDACH', 'GASTGARTENGLAS'],
+      umbauOnly: ['DACHUMBAU'],
+      alwaysOn: [
+        'AUSENWAENDE',
+        'AUSENWAENDE_FARBE',
+        'DEKEUG',
+        'DECKEOG',
+        'BALKONE',
+        'FENSTERRAHMEN',
+        'FENSTERGLAS',
+        'GASTGARTENGLAS',
+        'ZUBAUGLAS',
+        'INNENWAENDEUG',
+        'INNENWAENDEOG',
+        'ZUBAU',
+        'GRUNDSTÜCK',
+        'TREPPEN',
+        'TREPPENOG',
+        'STÜTZMAUER'
+      ]
+    };
+
+    let currentState = 'bestand';
+
+    function findByNames(model, names) {
+      const found = [];
+      model.traverse((child) => {
+        if (!child.name) return;
+        const cleanName = child.name.toUpperCase();
+        if (names.some((name) => cleanName.includes(name.toUpperCase()))) {
+          found.push(child);
+        }
+      });
+      return found;
+    }
+
+    function stylizeMaterials(object) {
+      object.traverse((child) => {
+        if (!child.isMesh || !child.material) return;
+
+        child.castShadow = true;
+        child.receiveShadow = true;
+
+        const materials = Array.isArray(child.material) ? child.material : [child.material];
+        const name = (child.name || '').toUpperCase();
+
+        materials.forEach((mat) => {
+          if (!mat) return;
+          mat.envMapIntensity = 1.0;
+
+          if (name.includes('GLAS')) {
+            mat.transparent = true;
+            mat.opacity = 0.22;
+            mat.roughness = 0.05;
+            mat.metalness = 0.0;
+            mat.color = new THREE.Color(0xdfe8ee);
+            mat.depthWrite = false;
+          } else if (name.includes('DACH')) {
+            mat.roughness = 0.92;
+            mat.metalness = 0.02;
+            mat.color = new THREE.Color(0x43484f);
+          } else if (name.includes('FENSTERRAHMEN')) {
+            mat.roughness = 0.55;
+            mat.metalness = 0.15;
+            mat.color = new THREE.Color(0x232629);
+          } else if (name.includes('AUSENWAENDE') || name.includes('INNENWAENDE')) {
+            mat.roughness = 0.96;
+            mat.metalness = 0.0;
+          } else if (name.includes('GRUNDST') || name.includes('STÜTZMAUER') || name.includes('TREPPEN')) {
+            mat.roughness = 1.0;
+            mat.metalness = 0.0;
+          }
+
+          mat.needsUpdate = true;
+        });
+      });
+    }
+
+    function applyClipping(object) {
+      object.traverse((child) => {
+        if (!child.isMesh) return;
+
+        if (Array.isArray(child.material)) {
+          child.material.forEach((mat) => {
+            mat.clippingPlanes = [clippingPlane];
+            mat.clipShadows = true;
+            mat.needsUpdate = true;
+          });
+        } else if (child.material) {
+          child.material.clippingPlanes = [clippingPlane];
+          matIf(child.material);
+        }
+      });
+    }
+
+    function matIf(mat) {
+      mat.clipShadows = true;
+      mat.needsUpdate = true;
+    }
+
+    function collectGroups(model) {
+      groupMap.set('bestandOnly', findByNames(model, groups.bestandOnly));
+      groupMap.set('umbauOnly', findByNames(model, groups.umbauOnly));
+      groupMap.set('alwaysOn', findByNames(model, groups.alwaysOn));
+    }
+
+    function setVisible(listName, visible) {
+      const items = groupMap.get(listName) || [];
+      items.forEach((obj) => { obj.visible = visible; });
+    }
+
+    function applyState(state) {
+      currentState = state;
+      setVisible('alwaysOn', true);
+
+      if (state === 'bestand') {
+        setVisible('bestandOnly', true);
+        setVisible('umbauOnly', false);
+        stateBestandBtn.classList.add('active');
+        stateUmbauBtn.classList.remove('active');
+        statusEl.textContent = 'Modellzustand: Bestand';
+      } else {
+        setVisible('bestandOnly', false);
+        setVisible('umbauOnly', true);
+        stateBestandBtn.classList.remove('active');
+        stateUmbauBtn.classList.add('active');
+        statusEl.textContent = 'Modellzustand: Umbau';
+      }
+    }
+
+    stateBestandBtn.addEventListener('click', () => applyState('bestand'));
+    stateUmbauBtn.addEventListener('click', () => applyState('umbau'));
+
+    clipSlider.addEventListener('input', (e) => {
+      clippingPlane.constant = Number(e.target.value);
+      statusEl.textContent = `Schnitthöhe: ${Number(e.target.value).toFixed(1)}`;
+    });
+
+    resetViewBtn.addEventListener('click', () => {
+      camera.position.set(18, 12, 18);
+      controls.target.set(0, 4, 0);
+      controls.update();
+      clippingPlane.constant = 15;
+      clipSlider.value = 15;
+      statusEl.textContent = 'Ansicht zurückgesetzt.';
+    });
+
+    showAllBtn.addEventListener('click', () => {
+      applyState(currentState);
+      statusEl.textContent = 'Aktueller Zustand vollständig eingeblendet.';
+    });
+
+    const loader = new GLTFLoader();
+    loader.load(
+      './Haus_Tainach_BANK.glb',
+      (gltf) => {
+        const rootModel = gltf.scene;
+        scene.add(rootModel);
+
+        rootModel.rotation.x = -Math.PI / 2;
+
+        const box = new THREE.Box3().setFromObject(rootModel);
+        const center = box.getCenter(new THREE.Vector3());
+        const size = box.getSize(new THREE.Vector3());
+
+        rootModel.position.sub(center);
+        rootModel.position.y += size.y / 2;
+        ground.position.y = 0;
+
+        controls.target.set(0, size.y * 0.35, 0);
+        camera.position.set(size.x * 1.35, size.y * 1.05, size.z * 1.35);
+        controls.update();
+
+        stylizeMaterials(rootModel);
+        applyClipping(rootModel);
+        collectGroups(rootModel);
+        applyState('bestand');
+      },
+      undefined,
+      (error) => {
+        console.error(error);
+        statusEl.textContent = 'Fehler beim Laden der GLB-Datei.';
+      }
+    );
+
+    function animate() {
+      requestAnimationFrame(animate);
+      controls.update();
+      renderer.render(scene, camera);
+    }
+    animate();
+
+    window.addEventListener('resize', () => {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+  </script>
+</body>
+</html>
       color: white;
       font-size: 14px;
     }
