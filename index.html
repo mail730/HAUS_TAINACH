@@ -302,6 +302,8 @@
         always.forEach((obj) => { obj.visible = true; });
         bestand.forEach((obj) => { obj.visible = false; });
         umbau.forEach((obj) => { obj.visible = true; });
+        const farbeAus = findByNames(rootModel, ['AUSENWAENDE_FARBE:1']);
+        farbeAus.forEach((obj) => { obj.visible = false; });
         stateBestandBtn.classList.remove('active');
         stateUmbauBtn.classList.add('active');
         if (!introActive) statusEl.textContent = 'Modellzustand: Umbau';
