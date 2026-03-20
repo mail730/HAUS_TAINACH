@@ -53,13 +53,13 @@
     .dot.vermietet { background: #597ea3; }
     .status { margin-top: 12px; font-size: 12px; color: #64748b; line-height: 1.4; min-height: 18px; }
     #demoCursor {
-      position: absolute; z-index: 20; width: 44px; height: 44px; pointer-events: none; opacity: 0; transform: translate(-50%, -50%) scaleX(-1) scale(1);
+      position: absolute; z-index: 20; width: 56px; height: 56px; pointer-events: none; opacity: 0; transform: translate(-50%, -50%) scaleX(-1) scale(1);
       transition: transform 0.18s ease, opacity 0.25s ease, left 0.35s ease, top 0.35s ease;
     }
     #demoCursor::before {
       content: ''; position: absolute; left: 0; top: 0; width: 0; height: 0;
-      border-left: 0 solid transparent; border-right: 20px solid transparent; border-top: 36px solid #ff5a36;
-      transform: rotate(-35deg); transform-origin: 0 0;
+      border-left: 0 solid transparent; border-right: 26px solid transparent; border-top: 46px solid #ff5a36;
+      transform: rotate(-35deg) scaleX(-1); transform-origin: 0 0;
       filter: drop-shadow(0 3px 8px rgba(255,90,54,0.45));
     }
     @media (max-width: 700px) {
@@ -68,6 +68,546 @@
     }
   </style>
 </head>
+<body>
+  <div id="app">
+    <div id="demoCursor"></div>
+    <div class="panel">
+      <h1>Haus Tainach Viewer</h1>
+      <div class="panel-subtitle">Bestand / Umbau mit Höhenschnitt</div>
+
+      <div class="group">
+        <div class="group-title">Modell laden</div>
+        <input id="fileInput" type="file" accept=".glb,.gltf,model/gltf-binary,model/gltf+json" />
+        <div class="file-actions">
+          <label for="fileInput" class="button-like">GLB wählen</label>
+          <button id="loadDefaultBtn" class="secondary">Standard laden</button>
+        </div>
+      </div>
+
+      <div class="group">
+        <div class="group-title">Modellzustand</div>
+        <div class="buttons">
+          <button id="stateBestand" class="active">Bestand</button>
+          <button id="stateUmbau">Umbau</button>
+        </div>
+      </div>
+
+      <div class="group">
+        <div class="group-title">Nutzungszonen</div>
+        <div class="legend">
+          <div class="legend-item"><span class="dot privat"></span><span>Privatbereich</span></div>
+          <div class="legend-item"><span class="dot gewerbe"></span><span>Gewerblich genutzt</span></div>
+          <div class="legend-item"><span class="dot vermietet"></span><span>Vermietet</span></div>
+        </div>
+      </div>
+
+      <div class="group">
+        <div class="group-title">Schnitt</div>
+        <label for="clipSlider">Höhe</label>
+        <input id="clipSlider" type="range" min="-5" max="15" step="0.1" value="15" />
+      </div>
+
+      <div class="group">
+        <div class="group-title">Ansicht</div>
+        <div class="buttons">
+          <button id="resetView">Reset</button>
+          <button id="showAll" class="secondary">Alles an</button>
+        </div>
+      </div>
+
+      <div class="status" id="status">Bereit.</div>
+    </div>
+
+    <div class="helpbox">
+      <h2>Bedienung</h2>
+      <div class="row"><div class="key">Drehen</div><div>Linke Maustaste ziehen</div></div>
+      <div class="row"><div class="key">Panen</div><div>Rechte Maustaste ziehen</div></div>
+      <div class="row"><div class="key">Zoom</div><div>Mausrad oder Touch-Pinch</div></div>
+      <div class="row"><div class="key">Schnitt</div><div>Regler im Menü verschieben</div></div>
+      <div class="row"><div class="key">Bauteile</div><div>Doppelklick blendet Bauteile ein oder aus</div></div>
+    </div>
+  </div>
+
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+      "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+    }
+  }
+  </script>
+
+  <script type="module">
+    import * as THREE from 'three';
+    import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+    import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+    import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+
+    const app = document.getElementById('app');
+    const demoCursor = document.getElementById('demoCursor');
+    const statusEl = document.getElementById('status');
+    const clipSlider = document.getElementById('clipSlider');
+    const resetViewBtn = document.getElementById('resetView');
+    const showAllBtn = document.getElementById('showAll');
+    const stateBestandBtn = document.getElementById('stateBestand');
+    const stateUmbauBtn = document.getElementById('stateUmbau');
+    const fileInput = document.getElementById('fileInput');
+    const loadDefaultBtn = document.getElementById('loadDefaultBtn');
+
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0xe7edf4);
+    scene.fog = new THREE.Fog(0xe7edf4, 70, 180);
+
+    const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 2000);
+    camera.position.set(18, 12, 18);
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.localClippingEnabled = true;
+    renderer.outputColorSpace = THREE.SRGBColorSpace;
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.0;
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    app.appendChild(renderer.domElement);
+
+    const pmremGenerator = new THREE.PMREMGenerator(renderer);
+    scene.environment = pmremGenerator.fromScene(new RoomEnvironment(), 0.035).texture;
+
+    const raycaster = new THREE.Raycaster();
+    const pointer = new THREE.Vector2();
+    const loader = new GLTFLoader();
+
+    const controls = new OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+    controls.target.set(0, 4, 0);
+    controls.minDistance = 5;
+    controls.maxDistance = 80;
+    controls.maxPolarAngle = Math.PI / 2;
+    controls.autoRotate = false;
+
+    const hemi = new THREE.HemisphereLight(0xf6fbff, 0xc4ced8, 1.2);
+    scene.add(hemi);
+    const ambient = new THREE.AmbientLight(0xffffff, 0.45);
+    scene.add(ambient);
+    const sun = new THREE.DirectionalLight(0xfffaf2, 2.8);
+    sun.position.set(28, 36, 18);
+    sun.castShadow = true;
+    sun.shadow.mapSize.set(2048, 2048);
+    sun.shadow.camera.near = 1;
+    sun.shadow.camera.far = 180;
+    sun.shadow.camera.left = -60;
+    sun.shadow.camera.right = 60;
+    sun.shadow.camera.top = 60;
+    sun.shadow.camera.bottom = -60;
+    sun.shadow.bias = -0.0004;
+    scene.add(sun);
+    const fill = new THREE.DirectionalLight(0xeaf3ff, 0.8);
+    fill.position.set(-18, 12, -12);
+    scene.add(fill);
+
+    const clippingPlane = new THREE.Plane(new THREE.Vector3(0, -1, 0), 15);
+    const groupMap = new Map();
+    let toggleTargets = [];
+
+    const groups = {
+      bestandOnly: ['AUSENWAENDE_FARBE', 'DACH', 'GASTGARTEN', 'GASTGARTENDACH', 'GASTGARTENGLAS'],
+      umbauOnly: ['DACHUMBAU', 'ZUBAU', 'ZUBAUGLAS'],
+      alwaysOn: ['AUSENWAENDE', 'DEKEUG', 'DECKEOG', 'BALKONE', 'FENSTERRAHMEN', 'FENSTERGLAS', 'INNENWAENDEUG', 'INNENWAENDEOG', 'GRUNDSTÜCK', 'TREPPEN', 'TREPPENOG', 'STÜTZMAUER', 'PRIVAT', 'STUDIO BASS', 'VERMIETUNG']
+    };
+
+    let currentState = 'bestand';
+    let rootModel = null;
+    let introActive = false;
+    let introStart = 0;
+    let introPhase = 'idle';
+    let introClipMin = -3;
+    let introClipMax = 15;
+    let activeObjectUrl = null;
+
+    function sleep(ms) { return new Promise(resolve => setTimeout(resolve, ms)); }
+
+    function resolveModelCandidates() {
+      const params = new URLSearchParams(window.location.search);
+      const fromQuery = params.get('model');
+      const candidates = [
+        fromQuery,
+        './Haus_Tainach_BANK.glb',
+        './Haus Tainach_BANK.glb',
+        './Haus_Tainach_BANK_edited.glb'
+      ].filter(Boolean);
+      return [...new Set(candidates)];
+    }
+
+    function computeVisibilityPlan(state, names) {
+      const plan = new Map();
+      const isBestandOnly = (name) => groups.bestandOnly.some((key) => name.includes(key));
+      const isUmbauOnly = (name) => groups.umbauOnly.some((key) => name.includes(key));
+      const isAlwaysOn = (name) => groups.alwaysOn.some((key) => name.includes(key));
+
+      names.forEach((rawName) => {
+        const name = rawName.toUpperCase();
+        let visible = true;
+        if (state === 'bestand') {
+          if (isUmbauOnly(name)) visible = false;
+          if (name.includes('AUSENWAENDE') && !name.includes('AUSENWAENDE_FARBE')) visible = false;
+          if (isBestandOnly(name)) visible = true;
+          if (isAlwaysOn(name) && !name.includes('AUSENWAENDE')) visible = true;
+        } else {
+          if (isBestandOnly(name)) visible = false;
+          if (isUmbauOnly(name) || isAlwaysOn(name)) visible = true;
+        }
+        plan.set(rawName, visible);
+      });
+      return plan;
+    }
+
+    function runSelfTests() {
+      const candidates = resolveModelCandidates();
+      console.assert(Array.isArray(candidates) && candidates.length >= 1, 'resolveModelCandidates should return candidates');
+
+      const testNames = ['AUSENWAENDE_FARBE', 'DACH', 'GASTGARTEN', 'GASTGARTENDACH', 'GASTGARTENGLAS', 'AUSENWAENDE', 'DACHUMBAU'];
+      const bestandPlan = computeVisibilityPlan('bestand', testNames);
+      console.assert(bestandPlan.get('AUSENWAENDE_FARBE') === true, 'Bestand should show AUSENWAENDE_FARBE');
+      console.assert(bestandPlan.get('DACH') === true, 'Bestand should show DACH');
+      console.assert(bestandPlan.get('GASTGARTEN') === true, 'Bestand should show GASTGARTEN');
+      console.assert(bestandPlan.get('GASTGARTENDACH') === true, 'Bestand should show GASTGARTENDACH');
+      console.assert(bestandPlan.get('GASTGARTENGLAS') === true, 'Bestand should show GASTGARTENGLAS');
+      console.assert(bestandPlan.get('AUSENWAENDE') === false, 'Bestand should hide AUSENWAENDE');
+      console.assert(bestandPlan.get('DACHUMBAU') === false, 'Bestand should hide DACHUMBAU');
+
+      const umbauPlan = computeVisibilityPlan('umbau', ['AUSENWAENDE', 'AUSENWAENDE_FARBE', 'DACHUMBAU']);
+      console.assert(umbauPlan.get('AUSENWAENDE') === true, 'Umbau should show AUSENWAENDE');
+      console.assert(umbauPlan.get('AUSENWAENDE_FARBE') === false, 'Umbau should hide AUSENWAENDE_FARBE');
+      console.assert(umbauPlan.get('DACHUMBAU') === true, 'Umbau should show DACHUMBAU');
+    }
+
+    runSelfTests();
+
+    function clearCurrentModel() {
+      if (!rootModel) return;
+      scene.remove(rootModel);
+      rootModel.traverse((child) => {
+        if (!child.isMesh) return;
+        const materials = Array.isArray(child.material) ? child.material : [child.material];
+        materials.forEach((mat) => mat?.dispose?.());
+        child.geometry?.dispose?.();
+      });
+      rootModel = null;
+      toggleTargets = [];
+      groupMap.clear();
+    }
+
+    function findByNames(model, names) {
+      const found = [];
+      model.traverse((child) => {
+        if (!child.name) return;
+        const cleanName = child.name.toUpperCase();
+        if (names.some((name) => cleanName.includes(name.toUpperCase()))) found.push(child);
+      });
+      return found;
+    }
+
+    function stylizeMaterials(object) {
+      object.traverse((child) => {
+        if (!child.isMesh || !child.material) return;
+        child.castShadow = true;
+        child.receiveShadow = true;
+        toggleTargets.push(child);
+        const materials = Array.isArray(child.material) ? child.material : [child.material];
+        materials.forEach((mat) => {
+          if (!mat) return;
+          mat.envMapIntensity = 0.0;
+          mat.roughness = typeof mat.roughness === 'number' ? mat.roughness : 1.0;
+          mat.metalness = 0.0;
+          mat.needsUpdate = true;
+        });
+      });
+    }
+
+    function applyClipping(object) {
+      object.traverse((child) => {
+        if (!child.isMesh) return;
+        if (Array.isArray(child.material)) {
+          child.material.forEach((mat) => { mat.clippingPlanes = [clippingPlane]; mat.clipShadows = true; mat.needsUpdate = true; });
+        } else if (child.material) {
+          child.material.clippingPlanes = [clippingPlane];
+          child.material.clipShadows = true;
+          child.material.needsUpdate = true;
+        }
+      });
+    }
+
+    function collectGroups(model) {
+      groupMap.set('bestandOnly', findByNames(model, groups.bestandOnly));
+      groupMap.set('umbauOnly', findByNames(model, groups.umbauOnly));
+      groupMap.set('alwaysOn', findByNames(model, groups.alwaysOn));
+    }
+
+    function applyState(state) {
+      currentState = state;
+      const bestand = groupMap.get('bestandOnly') || [];
+      const umbau = groupMap.get('umbauOnly') || [];
+      const always = groupMap.get('alwaysOn') || [];
+
+      if (state === 'bestand') {
+        always.forEach((obj) => {
+          const n = (obj.name || '').toUpperCase();
+          obj.visible = !(n.includes('AUSENWAENDE') && !n.includes('AUSENWAENDE_FARBE'));
+        });
+        bestand.forEach((obj) => { obj.visible = true; });
+        umbau.forEach((obj) => { obj.visible = false; });
+        stateBestandBtn.classList.add('active');
+        stateUmbauBtn.classList.remove('active');
+        if (!introActive) statusEl.textContent = 'Modellzustand: Bestand';
+      } else {
+        always.forEach((obj) => { obj.visible = true; });
+        bestand.forEach((obj) => { obj.visible = false; });
+        umbau.forEach((obj) => { obj.visible = true; });
+        stateBestandBtn.classList.remove('active');
+        stateUmbauBtn.classList.add('active');
+        if (!introActive) statusEl.textContent = 'Modellzustand: Umbau';
+      }
+    }
+
+    function findToggleObject(object) {
+      let current = object;
+      while (current && current !== rootModel) {
+        if (current.name && current.name.trim()) return current;
+        current = current.parent;
+      }
+      return object;
+    }
+
+    function onDoubleClick(event) {
+      if (!rootModel || introActive) return;
+      const rect = renderer.domElement.getBoundingClientRect();
+      pointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+      pointer.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+      raycaster.setFromCamera(pointer, camera);
+      const hits = raycaster.intersectObjects(toggleTargets, false);
+      if (!hits.length) return;
+      const target = findToggleObject(hits[0].object);
+      target.visible = !target.visible;
+      statusEl.textContent = `${target.name || 'Bauteil'} ${target.visible ? 'eingeblendet' : 'ausgeblendet'}.`;
+    }
+
+    function findNamedObjectContains(text) {
+      if (!rootModel) return null;
+      const target = text.toUpperCase();
+      let found = null;
+      rootModel.traverse((child) => {
+        if (found || !child.name) return;
+        if (child.name.toUpperCase().includes(target)) found = child;
+      });
+      return found;
+    }
+
+    function worldToScreen(object) {
+      const box = new THREE.Box3().setFromObject(object);
+      const center = box.getCenter(new THREE.Vector3());
+      center.project(camera);
+      return {
+        x: (center.x * 0.5 + 0.5) * window.innerWidth,
+        y: (-center.y * 0.5 + 0.5) * window.innerHeight
+      };
+    }
+
+    async function pulseCursor() {
+      demoCursor.style.transform = 'translate(-50%, -50%) scaleX(-1) scale(1.35)';
+      await sleep(180);
+      demoCursor.style.transform = 'translate(-50%, -50%) scaleX(-1) scale(1)';
+      await sleep(140);
+      demoCursor.style.transform = 'translate(-50%, -50%) scaleX(-1) scale(1.35)';
+      await sleep(180);
+      demoCursor.style.transform = 'translate(-50%, -50%) scaleX(-1) scale(1)';
+      await sleep(140);
+    }
+
+    async function cursorDemo() {
+      const walls = findNamedObjectContains('AUSENWAENDE');
+      if (!walls) return;
+      demoCursor.style.opacity = '1';
+      let pos = worldToScreen(walls);
+      demoCursor.style.left = `${pos.x}px`;
+      demoCursor.style.top = `${pos.y}px`;
+      statusEl.textContent = 'Doppelklick blendet Bauteile ein und aus.';
+      await pulseCursor();
+      walls.visible = false;
+      statusEl.textContent = 'AUSENWAENDE ausgeblendet.';
+      controls.autoRotate = true;
+      controls.autoRotateSpeed = 0.8;
+      await sleep(1200);
+      pos = worldToScreen(walls);
+      demoCursor.style.left = `${pos.x}px`;
+      demoCursor.style.top = `${pos.y}px`;
+      await pulseCursor();
+      walls.visible = true;
+      controls.autoRotate = false;
+      demoCursor.style.opacity = '0';
+      applyState(currentState);
+      statusEl.textContent = 'Modell geladen. Doppelklick blendet Bauteile ein/aus.';
+    }
+
+    async function playIntro() {
+      if (!rootModel) return;
+      introActive = true;
+      introStart = performance.now();
+      introPhase = 'rotate';
+      controls.autoRotate = true;
+      controls.autoRotateSpeed = 4.0;
+      applyState('bestand');
+      clippingPlane.constant = introClipMax;
+      clipSlider.value = introClipMax;
+      statusEl.textContent = 'Präsentation startet ...';
+      await sleep(3300);
+      introPhase = 'clip';
+      statusEl.textContent = 'Bestand – Schnitt fährt durch das Modell.';
+      await sleep(5200);
+      introPhase = 'switch';
+      applyState('umbau');
+      statusEl.textContent = 'Umbau';
+      await sleep(2000);
+      applyState('bestand');
+      clippingPlane.constant = introClipMax;
+      clipSlider.value = introClipMax;
+      controls.autoRotate = false;
+      introPhase = 'cursor';
+      await cursorDemo();
+      introPhase = 'done';
+      introActive = false;
+    }
+
+    async function loadModelFromUrl(url, runIntro = true) {
+      introActive = false;
+      controls.autoRotate = false;
+      demoCursor.style.opacity = '0';
+      statusEl.textContent = 'Lade Modell ...';
+
+      clearCurrentModel();
+
+      return new Promise((resolve, reject) => {
+        loader.load(
+          url,
+          (gltf) => {
+            rootModel = gltf.scene;
+            scene.add(rootModel);
+            rootModel.rotation.x = -Math.PI / 2;
+            const box = new THREE.Box3().setFromObject(rootModel);
+            const center = box.getCenter(new THREE.Vector3());
+            const size = box.getSize(new THREE.Vector3());
+            rootModel.position.sub(center);
+            rootModel.position.y += size.y / 2;
+            controls.target.set(0, size.y * 0.32, 0);
+            camera.position.set(size.x * 1.45, size.y * 0.95, size.z * 1.45);
+            controls.update();
+            stylizeMaterials(rootModel);
+            applyClipping(rootModel);
+            collectGroups(rootModel);
+            applyState('bestand');
+            if (runIntro) playIntro();
+            else statusEl.textContent = 'Modell geladen.';
+            resolve();
+          },
+          undefined,
+          (error) => {
+            console.error(error);
+            statusEl.textContent = 'Modell nicht gefunden. Bitte GLB wählen oder Pfad prüfen.';
+            reject(error);
+          }
+        );
+      });
+    }
+
+    async function findFirstAvailableUrl() {
+      const candidates = resolveModelCandidates();
+      for (const candidate of candidates) {
+        try {
+          const response = await fetch(candidate, { method: 'HEAD' });
+          if (response.ok) return candidate;
+        } catch (err) {
+          console.warn('Candidate check failed:', candidate, err);
+        }
+      }
+      return null;
+    }
+
+    async function loadDefaultModel() {
+      const candidate = await findFirstAvailableUrl();
+      if (!candidate) {
+        statusEl.textContent = 'Kein Standardmodell gefunden. Bitte GLB-Datei wählen.';
+        return;
+      }
+      await loadModelFromUrl(candidate, true);
+    }
+
+    fileInput.addEventListener('change', async (event) => {
+      const file = event.target.files?.[0];
+      if (!file) return;
+      if (activeObjectUrl) URL.revokeObjectURL(activeObjectUrl);
+      activeObjectUrl = URL.createObjectURL(file);
+      await loadModelFromUrl(activeObjectUrl, true);
+    });
+
+    loadDefaultBtn.addEventListener('click', () => {
+      loadDefaultModel();
+    });
+
+    stateBestandBtn.addEventListener('click', () => { introActive = false; controls.autoRotate = false; demoCursor.style.opacity='0'; applyState('bestand'); });
+    stateUmbauBtn.addEventListener('click', () => { introActive = false; controls.autoRotate = false; demoCursor.style.opacity='0'; applyState('umbau'); });
+    renderer.domElement.addEventListener('dblclick', onDoubleClick);
+
+    clipSlider.addEventListener('input', (e) => {
+      introActive = false; controls.autoRotate = false; demoCursor.style.opacity='0';
+      clippingPlane.constant = Number(e.target.value);
+      statusEl.textContent = `Schnitthöhe: ${Number(e.target.value).toFixed(1)}`;
+    });
+
+    resetViewBtn.addEventListener('click', () => {
+      introActive = false; controls.autoRotate = false; demoCursor.style.opacity='0';
+      camera.position.set(18, 12, 18);
+      controls.target.set(0, 4, 0);
+      controls.update();
+      clippingPlane.constant = 15;
+      clipSlider.value = 15;
+      statusEl.textContent = 'Ansicht zurückgesetzt.';
+    });
+
+    showAllBtn.addEventListener('click', () => {
+      if (!rootModel) return;
+      introActive = false; controls.autoRotate = false; demoCursor.style.opacity='0';
+      rootModel.traverse((child) => {
+        if (child.isMesh) child.visible = true;
+        else if (child !== rootModel) child.visible = true;
+      });
+      applyState(currentState);
+      statusEl.textContent = 'Aktueller Zustand vollständig eingeblendet.';
+    });
+
+    function animate() {
+      requestAnimationFrame(animate);
+      if (introActive && introPhase === 'clip') {
+        const t = Math.min((performance.now() - introStart - 3300) / 5200, 1);
+        const pingPong = t < 0.5 ? t * 2 : (1 - t) * 2;
+        clippingPlane.constant = THREE.MathUtils.lerp(introClipMax, introClipMin, pingPong);
+        clipSlider.value = clippingPlane.constant;
+      }
+      controls.update();
+      renderer.render(scene, camera);
+    }
+    animate();
+
+    window.addEventListener('resize', () => {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+
+    loadDefaultModel();
+  </script>
+</body>
+</html>
 <body>
   <div id="app">
     <div id="demoCursor"></div>
