@@ -29,9 +29,9 @@
       top: 18px;
       left: 18px;
       z-index: 10;
-      width: 300px;
+      width: 320px;
       max-width: calc(100vw - 36px);
-      background: rgba(255, 255, 255, 0.80);
+      background: rgba(255, 255, 255, 0.82);
       backdrop-filter: blur(16px);
       -webkit-backdrop-filter: blur(16px);
       border: 1px solid rgba(255,255,255,0.7);
@@ -84,7 +84,7 @@
       font-size: 14px;
       font-weight: 600;
       box-shadow: 0 8px 18px rgba(15, 23, 42, 0.16);
-      transition: transform 0.15s ease, box-shadow 0.15s ease, opacity 0.15s ease;
+      transition: transform 0.15s ease, box-shadow 0.15s ease;
     }
 
     button:hover {
@@ -112,6 +112,31 @@
       width: 100%;
       accent-color: #2563eb;
     }
+
+    .legend {
+      display: grid;
+      gap: 10px;
+    }
+
+    .legend-item {
+      display: grid;
+      grid-template-columns: 14px 1fr;
+      gap: 10px;
+      align-items: center;
+      font-size: 13px;
+      color: #334155;
+    }
+
+    .dot {
+      width: 14px;
+      height: 14px;
+      border-radius: 999px;
+      box-shadow: inset 0 0 0 1px rgba(15, 23, 42, 0.12), 0 2px 6px rgba(15, 23, 42, 0.08);
+    }
+
+    .dot.privat { background: #c48047; }
+    .dot.gewerbe { background: #567860; }
+    .dot.vermietet { background: #597ea3; }
 
     .status {
       margin-top: 12px;
@@ -143,6 +168,15 @@
         <div class="buttons">
           <button id="stateBestand" class="active">Bestand</button>
           <button id="stateUmbau">Umbau</button>
+        </div>
+      </div>
+
+      <div class="group">
+        <div class="group-title">Nutzungszonen</div>
+        <div class="legend">
+          <div class="legend-item"><span class="dot privat"></span><span>Privatbereich</span></div>
+          <div class="legend-item"><span class="dot gewerbe"></span><span>Gewerblich genutzt</span></div>
+          <div class="legend-item"><span class="dot vermietet"></span><span>Vermietet</span></div>
         </div>
       </div>
 
@@ -265,7 +299,10 @@
         'GRUNDSTÜCK',
         'TREPPEN',
         'TREPPENOG',
-        'STÜTZMAUER'
+        'STÜTZMAUER',
+        'PRIVAT',
+        'Studio BASS',
+        'VERMIETUNG'
       ]
     };
 
@@ -298,7 +335,19 @@
 
           mat.envMapIntensity = 1.0;
 
-          if (name.includes('AUSENWAENDE_FARBE')) {
+          if (name.includes('PRIVAT')) {
+            mat.color = new THREE.Color(0xc48047);
+            mat.roughness = 0.92;
+            mat.metalness = 0.0;
+          } else if (name.includes('STUDIO BASS')) {
+            mat.color = new THREE.Color(0x567860);
+            mat.roughness = 0.92;
+            mat.metalness = 0.0;
+          } else if (name.includes('VERMIETUNG')) {
+            mat.color = new THREE.Color(0x597ea3);
+            mat.roughness = 0.92;
+            mat.metalness = 0.0;
+          } else if (name.includes('AUSENWAENDE_FARBE')) {
             mat.color = new THREE.Color(0xd89247);
             mat.roughness = 0.98;
             mat.metalness = 0.0;
