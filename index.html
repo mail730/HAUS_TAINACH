@@ -144,15 +144,15 @@
     scene.fog = null;
 
     const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 2000);
-    camera.position.set(18, 12, 18);
+    camera.position.set(22, 18, 22);
 
     const renderer = new THREE.WebGLRenderer({ antialias: true });
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     renderer.setSize(window.innerWidth, window.innerHeight);
     renderer.localClippingEnabled = true;
     renderer.outputColorSpace = THREE.SRGBColorSpace;
-    renderer.toneMapping = THREE.NoToneMapping;
-    renderer.toneMappingExposure = 1.0;
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.08;
     renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     app.appendChild(renderer.domElement);
@@ -184,11 +184,11 @@
     controls.maxPolarAngle = Math.PI / 2;
     controls.autoRotate = false;
 
-    const hemi = new THREE.HemisphereLight(0xffffff, 0xe3e7ec, 0.85);
+    const hemi = new THREE.HemisphereLight(0xf8fbff, 0xd6dde6, 1.05);
     scene.add(hemi);
-    const ambient = new THREE.AmbientLight(0xffffff, 0.22);
+    const ambient = new THREE.AmbientLight(0xffffff, 0.34);
     scene.add(ambient);
-    const sun = new THREE.DirectionalLight(0xffffff, 1.3);
+    const sun = new THREE.DirectionalLight(0xfffaf2, 1.85);
     sun.position.set(30, 34, 18);
     sun.castShadow = true;
     sun.shadow.mapSize.set(2048, 2048);
@@ -203,19 +203,23 @@
 
     const ground = new THREE.Mesh(
       new THREE.CircleGeometry(180, 96),
-      new THREE.ShadowMaterial({ color: 0x000000, opacity: 0.10 })
+      new THREE.ShadowMaterial({ color: 0x000000, opacity: 0.14 })
     );
     ground.rotation.x = -Math.PI / 2;
     ground.position.y = -0.02;
     ground.receiveShadow = true;
     scene.add(ground);
 
+    const fill = new THREE.DirectionalLight(0xeaf2fb, 0.55);
+    fill.position.set(-18, 16, -10);
+    scene.add(fill);
+
     const clippingPlane = new THREE.Plane(new THREE.Vector3(0, -1, 0), 15);
     const groupMap = new Map();
     let toggleTargets = [];
 
     const groups = {
-      bestandOnly: ['AUSENWAENDE_FARBE:1', '1DACH:1', 'DACH:1', 'DACH', 'GASTGARTEN'],
+      bestandOnly: ['AUSENWAENDE_BESTAND:1', '1DACH:1', 'DACH:1', 'DACH', 'GASTGARTEN'],
       umbauOnly: ['DACHUMBAU', 'ZUBAU', 'ZUBAUGLAS'],
       alwaysOn: ['AUSENWAENDE', 'DEKEUG', 'DECKEOG', 'BALKONE', 'FENSTERRAHMEN', 'FENSTERGLAS', 'INNENWAENDEUG', 'INNENWAENDEOG', 'GRUNDSTÜCK', 'TREPPEN', 'TREPPENOG', 'STÜTZMAUER', 'PRIVAT', 'STUDIO BASS', 'VERMIETUNG']
     };
@@ -257,7 +261,7 @@
         const materials = Array.isArray(child.material) ? child.material : [child.material];
         materials.forEach((mat) => {
           if (!mat) return;
-          mat.envMapIntensity = 0.15;
+          mat.envMapIntensity = 0.3;
           if (mat.transparent) mat.depthWrite = false;
           mat.needsUpdate = true;
         });
@@ -302,7 +306,7 @@
         always.forEach((obj) => { obj.visible = true; });
         bestand.forEach((obj) => { obj.visible = false; });
         umbau.forEach((obj) => { obj.visible = true; });
-        const farbeAus = findByNames(rootModel, ['AUSENWAENDE_FARBE:1']);
+        const farbeAus = findByNames(rootModel, ['AUSENWAENDE_BESTAND:1']);
         farbeAus.forEach((obj) => { obj.visible = false; });
         stateBestandBtn.classList.remove('active');
         stateUmbauBtn.classList.add('active');
@@ -437,8 +441,8 @@
             const size = box.getSize(new THREE.Vector3());
             rootModel.position.sub(center);
             rootModel.position.y += size.y / 2;
-            controls.target.set(0, size.y * 0.32, 0);
-            camera.position.set(size.x * 1.45, size.y * 0.95, size.z * 1.45);
+            controls.target.set(0, size.y * 0.38, 0);
+            camera.position.set(size.x * 1.65, size.y * 1.25, size.z * 1.65);
             controls.update();
             stylizeMaterials(rootModel);
             applyClipping(rootModel);
@@ -475,7 +479,7 @@
           else if (child !== rootModel) child.visible = true;
         });
       }
-      camera.position.set(18, 12, 18);
+      camera.position.set(22, 18, 22);
       controls.target.set(0, 4, 0);
       controls.update();
       clippingPlane.constant = 15;
