@@ -140,8 +140,8 @@
     const stateUmbauBtn = document.getElementById('stateUmbau');
 
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color(0xdfe7ef);
-    scene.fog = null;
+    scene.background = new THREE.Color(0xbfd4ea);
+    scene.fog = new THREE.Fog(0xdfeaf5, 110, 260);
 
     const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 2000);
     camera.position.set(22, 18, 22);
@@ -158,19 +158,40 @@
     app.appendChild(renderer.domElement);
 
     const pmremGenerator = new THREE.PMREMGenerator(renderer);
-    textureLoaderLoad();
+    scene.environment = pmremGenerator.fromScene(new RoomEnvironment(), 0.03).texture;
 
-    function textureLoaderLoad() {
-      const textureLoader = new THREE.TextureLoader();
-      textureLoader.load(PANORAMA_URL, (tex) => {
-        tex.mapping = THREE.EquirectangularReflectionMapping;
-        tex.colorSpace = THREE.SRGBColorSpace;
-        scene.background = tex;
-        scene.environment = tex;
-      }, undefined, () => {
-        scene.environment = pmremGenerator.fromScene(new RoomEnvironment(), 0.03).texture;
-      });
-    }
+    const skyGeo = new THREE.SphereGeometry(600, 48, 24);
+    const skyMat = new THREE.ShaderMaterial({
+      side: THREE.BackSide,
+      uniforms: {
+        topColor: { value: new THREE.Color(0x7db7f0) },
+        bottomColor: { value: new THREE.Color(0xf3f7fb) },
+        offset: { value: 12 },
+        exponent: { value: 0.9 }
+      },
+      vertexShader: `
+        varying vec3 vWorldPosition;
+        void main() {
+          vec4 worldPosition = modelMatrix * vec4(position, 1.0);
+          vWorldPosition = worldPosition.xyz;
+          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        }
+      `,
+      fragmentShader: `
+        uniform vec3 topColor;
+        uniform vec3 bottomColor;
+        uniform float offset;
+        uniform float exponent;
+        varying vec3 vWorldPosition;
+        void main() {
+          float h = normalize(vWorldPosition + vec3(0.0, offset, 0.0)).y;
+          float mixFactor = max(pow(max(h, 0.0), exponent), 0.0);
+          gl_FragColor = vec4(mix(bottomColor, topColor, mixFactor), 1.0);
+        }
+      `
+    });
+    const sky = new THREE.Mesh(skyGeo, skyMat);
+    scene.add(sky);
 
     const raycaster = new THREE.Raycaster();
     const pointer = new THREE.Vector2();
@@ -219,9 +240,9 @@
     let toggleTargets = [];
 
     const groups = {
-      bestandOnly: ['AUSENWAENDE_BESTAND:1', '1DACH:1', 'DACH:1', 'DACH', 'GASTGARTEN'],
-      umbauOnly: ['DACHUMBAU', 'ZUBAU', 'ZUBAUGLAS'],
-      alwaysOn: ['AUSENWAENDE', 'DEKEUG', 'DECKEOG', 'BALKONE', 'FENSTERRAHMEN', 'FENSTERGLAS', 'INNENWAENDEUG', 'INNENWAENDEOG', 'GRUNDSTÜCK', 'TREPPEN', 'TREPPENOG', 'STÜTZMAUER', 'PRIVAT', 'STUDIO BASS', 'VERMIETUNG']
+      bestandOnly: ['AUSENWAENDE_BESTAND:1', 'DACH_BESTAND:1', '1DACH:1', 'DACH:1', 'GASTGARTEN'],
+      umbauOnly: ['AUSENWAENDE', 'DACHUMBAU', 'ZUBAU', 'ZUBAUGLAS'],
+      alwaysOn: ['DEKEUG', 'DECKEOG', 'BALKONE', 'FENSTERRAHMEN', 'FENSTERGLAS', 'INNENWAENDEUG', 'INNENWAENDEOG', 'GRUNDSTÜCK', 'TREPPEN', 'TREPPENOG', 'STÜTZMAUER', 'PRIVAT', 'STUDIO BASS', 'VERMIETUNG']
     };
 
     let currentState = 'bestand';
@@ -259,9 +280,16 @@
         child.receiveShadow = true;
         toggleTargets.push(child);
         const materials = Array.isArray(child.material) ? child.material : [child.material];
+        const name = (child.name || '').toUpperCase();
         materials.forEach((mat) => {
           if (!mat) return;
-          mat.envMapIntensity = 0.3;
+          if (name.includes('AUSENWAENDE_BESTAND:1')) {
+            mat.envMapIntensity = 0.0;
+            if ('roughness' in mat) mat.roughness = 1.0;
+            if ('metalness' in mat) mat.metalness = 0.0;
+          } else {
+            mat.envMapIntensity = 0.3;
+          }
           if (mat.transparent) mat.depthWrite = false;
           mat.needsUpdate = true;
         });
